@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0b12">
+<title>FLAPPY BIRD — PIXEL</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; overflow:hidden; background:#08080f;
+    -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:none; overscroll-behavior:none;
+    -webkit-touch-callout:none;
+  }
+  #wrap {
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 40%, #14142a 0%, #05050c 100%);
+  }
+  canvas {
+    display:block;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    background:#000;
+    box-shadow: 0 0 0 3px #000, 0 0 30px rgba(90,140,255,.25);
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<script>
+"use strict";
+
+/* =========================================================
+   БАЗОВЫЕ КОНСТАНТЫ
+   ========================================================= */
+const W = 240, H = 320;
+const GROUND_Y = 264;
+const PLAY_TOP = 24;
+
+const GRAVITY    = 0.28;
+const JUMP       = -5.0;
+const MAX_FALL   = 6.2;
+const PIPE_SPEED = 0.85;
+const PIPE_GAP   = 84;
+const PIPE_SPACING = 96;
+const PIPE_W     = 26;
+
+const BIRD_X     = 62;
+const BIRD_SCALE = 1.8;   // было 1.5 — птица крупнее
+const HIT_W2     = 7;     // полуширина хитбокса
+const HIT_H2     = 6;     // полувысота хитбокса
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+canvas.width = W;
+canvas.height = H;
+ctx.imageSmoothingEnabled = false;
+
+/* =========================================================
+   ПИКСЕЛЬНЫЙ ШРИФТ 5x7
+   ========================================================= */
+const FONT = {
+  'A':['.###.','#...#','#...#','#####','#...#','#...#','#...#'],
+  'B':['####.','#...#','#...#','####.','#...#','#...#','####.'],
+  'C':['.###.','#...#','#....','#....','#....','#...#','.###.'],
+  'D':['####.','#...#','#...#','#...#','#...#','#...#','####.'],
+  'E':['#####','#....','#....','####.','#....','#....','#####'],
+  'F':['#####','#....','#....','####.','#....','#....','#....'],
+  'G':['.###.','#...#','#....','#.###','#...#','#...#','.###.'],
+  'H':['#...#','#...#','#...#','#####','#...#','#...#','#...#'],
+  'I':['#####','..#..','..#..','..#..','..#..','..#..','#####'],
+  'J':['..###','...#.','...#.','...#.','...#.','#..#.','.##..'],
+  'K':['#...#','#..#.','#.#..','##...','#.#..','#..#.','#...#'],
+  'L':['#....','#....','#....','#....','#....','#....','#####'],
+  'M':['#...#','##.##','#.#.#','#...#','#...#','#...#','#...#'],
+  'N':['#...#','##..#','#.#.#','#..##','#...#','#...#','#...#'],
+  'O':['.###.','#...#','#...#','#...#','#...#','#...#','.###.'],
+  'P':['####.','#...#','#...#','####.','#....','#....','#....'],
+  'Q':['.###.','#...#','#...#','#...#','#.#.#','#..#.','.##.#'],
+  'R':['####.','#...#','#...#','####.','#.#..','#..#.','#...#'],
+  'S':['.###.','#...#','#....','.###.','....#','#...#','.###.'],
+  'T':['#####','..#..','..#..','..#..','..#..','..#..','..#..'],
+  'U':['#...#','#...#','#...#','#...#','#...#','#...#','.###.'],
+  'V':['#...#','#...#','#...#','#...#','#...#','.#.#.','..#..'],
+  'W':['#...#','#...#','#...#','#...#','#.#.#','##.##','#...#'],
+  'X':['#...#','#...#','.#.#.','..#..','.#.#.','#...#','#...#'],
+  'Y':['#...#','#...#','.#.#.','..#..','..#..','..#..','..#..'],
+  'Z':['#####','....#','...#.','..#..','.#...','#....','#####'],
+  '0':['.###.','#...#','#..##','#.#.#','##..#','#...#','.###.'],
+  '1':['..#..','.##..','..#..','..#..','..#..','..#..','.###.'],
+  '2':['.###.','#...#','....#','...#.','..#..','.#...','#####'],
+  '3':['.###.','#...#','....#','..##.','....#','#...#','.###.'],
+  '4':['...#.','..##.','.#.#.','#..#.','#####','...#.','...#.'],
+  '5':['#####','#....','####.','....#','....#','#...#','.###.'],
+  '6':['..##.','.#...','#....','####.','#...#','#...#','.###.'],
+  '7':['#####','....#','...#.','..#..','.#...','.#...','.#...'],
+  '8':['.###.','#...#','#...#','.###.','#...#','#...#','.###.'],
+  '9':['.###.','#...#','#...#','.####','....#','...#.','.##..'],
+  ' ':['.....','.....','.....','.....','.....','.....','.....'],
+  ':':['.....','..#..','..#..','.....','..#..','..#..','.....'],
+  '!':['..#..','..#..','..#..','..#..','..#..','.....','..#..'],
+  '.':['.....','.....','.....','.....','.....','.....','..#..'],
+  '-':['.....','.....','.....','#####','.....','.....','.....'],
+  '/':['....#','....#','...#.','..#..','.#...','#....','#....']
+};
+
+Object.assign(FONT, {
+  'А':FONT['A'], 'В':FONT['B'], 'Е':FONT['E'], 'К':FONT['K'], 'М':FONT['M'],
+  'Н':FONT['H'], 'О':FONT['O'], 'Р':FONT['P'], 'С':FONT['C'], 'Т':FONT['T'],
+  'У':FONT['Y'], 'Х':FONT['X']
+});
+
+Object.assign(FONT, {
+  'Б':['#####','#....','#....','####.','#...#','#...#','####.'],
+  'Г':['#####','#....','#....','#....','#....','#....','#....'],
+  'Д':['..###','..#.#','.#..#','.#..#','#####','#...#','#...#'],
+  'Ё':['.#.#.','#####','#....','####.','#....','#....','#####'],
+  'Ж':['#.#.#','#.#.#','.###.','..#..','.###.','#.#.#','#.#.#'],
+  'З':['.###.','#...#','....#','..##.','....#','#...#','.###.'],
+  'И':['#...#','#...#','#..##','#.#.#','##..#','#...#','#...#'],
+  'Й':['#.#.#','#...#','#..##','#.#.#','##..#','#...#','#...#'],
+  'Л':['..###','.#..#','.#..#','.#..#','.#..#','#...#','#...#'],
+  'П':['#####','#...#','#...#','#...#','#...#','#...#','#...#'],
+  'Ф':['..#..','.###.','#.#.#','#.#.#','#.#.#','.###.','..#..'],
+  'Ц':['#...#','#...#','#...#','#...#','#...#','#####','....#'],
+  'Ч':['#...#','#...#','#...#','.####','....#','....#','....#'],
+  'Ш':['#.#.#','#.#.#','#.#.#','#.#.#','#.#.#','#.#.#','#####'],
+  'Щ':['#.#.#','#.#.#','#.#.#','#.#.#','#.#.#','#####','....#'],
+  'Ъ':['##...','.#...','.#...','.###.','.#..#','.#..#','.###.'],
+  'Ы':['#...#','#...#','#...#','###.#','#.#.#','#.#.#','###.#'],
+  'Ь':['#....','#....','#....','###..','#..#.','#..#.','###..'],
+  'Э':['.###.','#...#','....#','..###','....#','#...#','.###.'],
+  'Ю':['#.###','#.#.#','#.#.#','#####','#.#.#','#.#.#','#.###'],
+  'Я':['.####','#...#','#...#','.####','...#.','..#.#','.#..#']
+});
+
+function textWidth(str, s){ return str.length * 6 * s - s; }
+
+function drawText(str, x, y, s, color, align){
+  str = String(str).toUpperCase();
+  const w = textWidth(str, s);
+  let cx = x;
+  if(align === 'center') cx = Math.round(x - w/2);
+  else if(align === 'right') cx = Math.round(x - w);
+  ctx.fillStyle = color;
+  for(let i=0;i<str.length;i++){
+    const g = FONT[str[i]];
+    if(!g) continue;
+    const gx = cx + i*6*s;
+    for(let r=0;r<7;r++){
+      const row = g[r];
+      let run = -1;
+      for(let c=0;c<=5;c++){
+        const on = c < 5 && row[c] === '#';
+        if(on && run < 0) run = c;
+        else if(!on && run >= 0){
+          ctx.fillRect(gx + run*s, y + r*s, (c-run)*s, s);
+          run = -1;
+        }
+      }
+    }
+  }
+}
+
+function drawTextShadow(str, x, y, s, color, shadow, align){
+  drawText(str, x + s, y + s, s, shadow, align);
+  drawText(str, x, y, s, color, align);
+}
+
+/* =========================================================
+   ЗВУК
+   ========================================================= */
+const Sound = {
+  ctx:null, master:null, ok:true,
+  init(){
+    if(this.ctx){
+      if(this.ctx.state === 'suspended') this.ctx.resume();
+      return;
+    }
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.30;
+      this.master.connect(this.ctx.destination);
+    }catch(e){ this.ok = false; }
+  },
+  tone(freq, dur, type, vol, slideTo, delay){
+    if(!this.ok || !this.ctx) return;
+    const t0 = this.ctx.currentTime + (delay || 0);
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, t0);
+    if(slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || 0.4, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(this.master);
+    osc.start(t0); osc.stop(t0 + dur + 0.03);
+  },
+  flap(){ this.tone(400, 0.09, 'square', 0.45, 780, 0); },
+  score(){ this.tone(880, 0.07, 'square', 0.40, null, 0);
+           this.tone(1320, 0.10, 'square', 0.35, null, 0.07); },
+  hit(){ this.tone(300, 0.12, 'square', 0.55, 90, 0);
+         this.tone(140, 0.28, 'triangle', 0.45, 45, 0.10); },
+  record(){ [523,659,784,1047,1319].forEach((f,i)=> this.tone(f, 0.11, 'square', 0.38, null, i*0.09)); },
+  click(){ this.tone(760, 0.045, 'square', 0.30, 980, 0); }
+};
+
+/* =========================================================
+   СКИНЫ ПТИЦЫ — 9 штук, все цвета уникальные
+   ========================================================= */
+const SKINS = [
+  { name:'АДАМ',     body:'#e8402a', dark:'#8e1a0e', wing:'#ff9a7a', light:'#ff6b4a' },  // красный
+  { name:'МУХАММАД', body:'#f5c518', dark:'#8f6b00', wing:'#ffe680', light:'#ffd94a' },  // жёлтый
+  { name:'ДИНАРА',   body:'#ff6fb5', dark:'#9c2f6b', wing:'#ffb3d9', light:'#ff8fc7' },  // розовый
+  { name:'ХЬИШАМА',  body:'#ff8c1a', dark:'#8f4400', wing:'#ffc98a', light:'#ffa84a' },  // оранжевый
+  { name:'ИБРАХЬИМ', body:'#3b6fd4', dark:'#1a356e', wing:'#8fb8f5', light:'#6a9ae8' },  // синий
+  { name:'ХАЛИД',    body:'#3fb84f', dark:'#185c22', wing:'#9fe8a8', light:'#6fd87c' },  // зелёный
+  { name:'ШЕЙХ',     body:'#8b4fd0', dark:'#451a75', wing:'#c9a0e8', light:'#a870e0' },  // фиолетовый
+  { name:'САФИЯ',    body:'#20c4b0', dark:'#0a5f54', wing:'#9fe8df', light:'#5fd8c8' },  // бирюзовый
+  { name:'АЙША',     body:'#e8e8f2', dark:'#7a7a94', wing:'#ffffff', light:'#f8f8ff' }   // серебристый
+];
+
+const BIRD_SPRITE = [
+  "....BBBB....",
+  "..BBBBBBBB..",
+  ".BBBBWWBBBB.",
+  ".BBBBWKBBOO.",
+  "BBBBBWKBBOOO",
+  "BBBBBBBBBBO.",
+  ".BBBBBBBBBB.",
+  "..BBBBBBBB..",
+  "....BBBB...."
+];
+
+/* =========================================================
+   ХЕЛПЕРЫ
+   ========================================================= */
+function px(x,y,w,h,c){
+  ctx.fillStyle = c;
+  ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
+
+function hex2rgb(h){
+  h = h.replace('#','');
+  return [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)];
+}
+
+function skyGrad(c1, c2, h, bands){
+  bands = bands || 12;
+  const a = hex2rgb(c1), b = hex2rgb(c2);
+  for(let i=0;i<bands;i++){
+    const t = i/(bands-1);
+    ctx.fillStyle = 'rgb(' +
+      Math.round(a[0] + (b[0]-a[0])*t) + ',' +
+      Math.round(a[1] + (b[1]-a[1])*t) + ',' +
+      Math.round(a[2] + (b[2]-a[2])*t) + ')';
+    const y0 = Math.floor(i*h/bands);
+    const y1 = Math.floor((i+1)*h/bands);
+    ctx.fillRect(0, y0, W, y1-y0);
+  }
+}
+
+function pcircle(cx, cy, r, color){
+  ctx.fillStyle = color;
+  cx = Math.round(cx); cy = Math.round(cy);
+  for(let y=-r;y<=r;y++){
+    const dx = Math.floor(Math.sqrt(Math.max(0, r*r - y*y)));
+    ctx.fillRect(cx-dx, cy+y, dx*2+1, 1);
+  }
+}
+
+function drawGround(g, scroll){
+  px(0, GROUND_Y, W, H-GROUND_Y, g.base);
+  px(0, GROUND_Y, W, 5, g.top);
+  px(0, GROUND_Y+5, W, 2, g.line);
+  const off = ((Math.floor(scroll) % 20) + 20) % 20;
+  for(let x=-20;x<W+20;x+=20){
+    px(x-off,      GROUND_Y+14, 9, 3, g.pat);
+    px(x-off+11,   GROUND_Y+24, 7, 3, g.pat);
+    px(x-off+3,    GROUND_Y+34, 8, 3, g.pat);
+    px(x-off+14,   GROUND_Y+44, 6, 3, g.pat);
+  }
+}
+
+const starField = (function(){
+  let seed = 987654321;
+  const rnd = () => { seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const arr = [];
+  for(let i=0;i<95;i++){
+    arr.push({
+      x: rnd()*W,
+      y: rnd()*(GROUND_Y-30),
+      s: rnd() < 0.22 ? 2 : 1,
+      p: rnd()*6.283,
+      bright: rnd() < 0.18
+    });
+  }
+  return arr;
+})();
+
+/* =========================================================
+   ФОНЫ
+   ========================================================= */
+const THEMES = [
+
+{
+  name:'НОЧЬ',
+  ground:{ base:'#16261a', top:'#2e5c33', line:'#0a160b', pat:'#0f1d11' },
+  draw(scroll, t){
+    skyGrad('#04061a', '#1b2a5e', GROUND_Y, 14);
+    for(const s of starField){
+      let x = ((s.x - scroll*0.08) % W + W) % W;
+      if(Math.sin(t*0.0018 + s.p) < -0.45) continue;
+      px(x, s.y, s.s, s.s, s.bright ? '#ffffff' : '#b9c8ff');
+    }
+    pcircle(183, 46, 18, '#efe6b0');
+    pcircle(186, 43, 15, '#fdfbe0');
+    pcircle(178, 50, 3,  '#ded6a4');
+    pcircle(188, 39, 2,  '#ded6a4');
+    pcircle(191, 52, 2,  '#ded6a4');
+    const off = ((scroll*0.16) % 170 + 170) % 170;
+    for(let i=-1;i<4;i++){
+      pcircle(i*170 - off + 40,  GROUND_Y + 14, 56, '#0a1130');
+      pcircle(i*170 - off + 125, GROUND_Y + 14, 42, '#0a1130');
+    }
+    drawGround(this.ground, scroll);
+  }
+},
+
+{
+  name:'ПЛЯЖ',
+  ground:{ base:'#e6c47a', top:'#f5dfa0', line:'#bb9750', pat:'#cfae62' },
+  draw(scroll, t){
+    skyGrad('#3aa6e0', '#c8ecf8', 152, 11);
+    pcircle(192, 40, 17, '#ffd23f');
+    pcircle(192, 40, 12, '#fff28a');
+    pcircle(192, 40, 6,  '#fffbd0');
+    const co = ((scroll*0.28) % 320 + 320) % 320;
+    for(let i=0;i<3;i++){
+      const cx = ((i*140 - co) % 320 + 320) % 320 - 50;
+      const cy = 26 + i*22;
+      pcircle(cx,      cy, 11, '#ffffff');
+      pcircle(cx + 13, cy+3, 8, '#ffffff');
+      pcircle(cx - 12, cy+3, 7, '#ffffff');
+      px(cx-11, cy+3, 30, 8, '#ffffff');
+    }
+    px(0, 152, W, 88, '#1f7fc4');
+    px(0, 152, W, 3,  '#a8e4ff');
+    const wo = ((Math.floor(scroll*0.6) % 24) + 24) % 24;
+    for(let y=160; y<238; y+=13){
+      for(let x=-24; x<W+24; x+=24){
+        px(x-wo,      y,   12, 2, '#4fb0e8');
+        px(x-wo+14,   y+4,  8, 2, '#8fd8f5');
+      }
+    }
+    px(0, 240, W, 24, '#efd79a');
+    px(0, 240, W, 3,  '#d9bd78');
+    px(0, 246, W, 2,  '#e5cd8e');
+    drawGround(this.ground, scroll);
+  }
+},
+
+{
+  name:'СТРОЙКА',
+  ground:{ base:'#6b6157', top:'#8a7f70', line:'#403a33', pat:'#57504a' },
+  draw(scroll, t){
+    skyGrad('#6d7889', '#bcc7d2', GROUND_Y, 10);
+    const off = ((scroll*0.13) % 210 + 210) % 210;
+    for(let i=-1;i<4;i++){
+      const bx = i*210 - off;
+      this.building(bx + 6,   128, 42, GROUND_Y-128, '#5b6472', '#454e5b');
+      this.building(bx + 58,   96, 52, GROUND_Y-96,  '#4e5765', '#3a424e');
+      this.building(bx + 122, 144, 34, GROUND_Y-144, '#616b79', '#4a5360');
+      this.building(bx + 166, 110, 46, GROUND_Y-110, '#545d6b', '#3f4753');
+    }
+    const cOff = ((scroll*0.22) % 260 + 260) % 260;
+    this.crane(60  - cOff, 52);
+    this.crane(60  - cOff + 260, 52);
+    this.crane(190 - cOff, 74);
+    drawGround(this.ground, scroll);
+  },
+  building(x, y, w, h, col, col2){
+    px(x, y, w, h, col);
+    px(x, y, w, 3, col2);
+    px(x, y, 3, h, col2);
+    px(x+w-3, y, 3, h, col2);
+    for(let wy = y+9; wy < y+h-8; wy += 13){
+      for(let wx = x+6; wx < x+w-8; wx += 12){
+        const lit = ((wx*7 + wy*13) % 5) < 3;
+        px(wx, wy, 6, 7, lit ? '#e8d98a' : '#3a4250');
+      }
+    }
+  },
+  crane(x, y){
+    x = Math.round(x);
+    const c = '#e8a33d', c2 = '#b87a1e';
+    px(x, y, 5, GROUND_Y - y, c);
+    px(x, y, 2, GROUND_Y - y, c2);
+    px(x-46, y, 96, 5, c);
+    px(x-46, y+3, 96, 2, c2);
+    px(x-46, y, 4, 12, c);
+    px(x-52, y+8, 12, 9, '#9aa2ad');
+    px(x+28, y+5, 2, 26, '#b6bec8');
+    px(x+23, y+31, 12, 7, '#8b939d');
+    px(x+23, y+31, 12, 2, '#c8d0d8');
+  }
+},
+
+{
+  name:'КОСМОС',
+  ground:{ base:'#241a35', top:'#463061', line:'#120c1d', pat:'#1c1429' },
+  draw(scroll, t){
+    skyGrad('#02020a', '#170b30', GROUND_Y, 13);
+    for(const s of starField){
+      let x = ((s.x - scroll*0.06) % W + W) % W;
+      const tw = Math.sin(t*0.0022 + s.p);
+      if(tw < -0.6) continue;
+      px(x, s.y, s.s, s.s, s.bright ? '#ffffff' : '#9fb0ff');
+    }
+    const pOff = ((scroll*0.05) % 480 + 480) % 480;
+    this.ringPlanet(200 - pOff*0.35, 66, 26);
+    this.ringPlanet(200 - pOff*0.35 + 480, 66, 26);
+    pcircle(40 - ((scroll*0.09) % 300 + 300) % 300 + 300, 120, 11, '#8a8fb0');
+    pcircle(38 - ((scroll*0.09) % 300 + 300) % 300 + 300, 118, 9, '#a8adc9');
+    ctx.globalAlpha = 0.16;
+    pcircle(70 - ((scroll*0.03) % 240 + 240) % 240, 200, 55, '#7a2fbf');
+    pcircle(180 - ((scroll*0.03) % 240 + 240) % 240, 150, 40, '#2f4fbf');
+    ctx.globalAlpha = 1;
+    drawGround(this.ground, scroll);
+  },
+  ringPlanet(cx, cy, r){
+    const ring = '#c9a0e8', ring2 = '#a074d0';
+    for(let dy=-Math.floor(r*0.55); dy<0; dy++){
+      const t = dy/(r*0.55);
+      const rx = Math.round(r*1.9*Math.sqrt(Math.max(0,1-t*t)));
+      px(cx-rx, cy+dy, rx*2, 1, ring2);
+    }
+    pcircle(cx, cy, r, '#8b4fd0');
+    pcircle(cx - r*0.28, cy - r*0.28, r*0.55, '#a86fe8');
+    pcircle(cx + r*0.35, cy + r*0.30, r*0.18, '#7340b0');
+    for(let dy=0; dy<=Math.floor(r*0.55); dy++){
+      const t = dy/(r*0.55);
+      const rx = Math.round(r*1.9*Math.sqrt(Math.max(0,1-t*t)));
+      px(cx-rx, cy+dy, rx*2, 1, ring);
+    }
+  }
+}
+
+];
+
+/* =========================================================
+   СОСТОЯНИЕ
+   ========================================================= */
+const G = {
+  state:'menu',
+  themeIndex:0,
+  skinIndex:0,
+  highScore:0,
+  score:0,
+  bgScroll:0,
+  wingT:0,
+  bird:{ x:BIRD_X, y:150, v:0, rot:0 },
+  pipes:[],
+  spawnTimer:0,
+  groundHit:false,
+  newRecord:false,
+  recordSoundAt:-1
+};
+
+try{
+  G.highScore = parseInt(localStorage.getItem('flappyPixelHighScore'), 10) || 0;
+}catch(e){ G.highScore = 0; }
+
+/* =========================================================
+   UI
+   ========================================================= */
+let ui = [];
+const pressAnim = {};
+
+function addBtn(id, x, y, w, h, label, fs, style, action){
+  ui.push({ id, x, y, w, h, label, fs, style: style || 'blue', action });
+}
+
+function hitBtn(x, y){
+  for(let i = ui.length-1; i >= 0; i--){
+    const b = ui[i];
+    if(x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+  }
+  return null;
+}
+
+const BTN_COLORS = {
+  blue : { fill:'#3b6fd4', light:'#7faef5', dark:'#22458c', border:'#0a1020' },
+  green: { fill:'#3fb84f', light:'#8fe89a', dark:'#237a2e', border:'#08180a' },
+  red  : { fill:'#d84a4a', light:'#f59a9a', dark:'#8c2626', border:'#200808' },
+  dark : { fill:'#3a3a55', light:'#6f6f96', dark:'#23233a', border:'#0a0a14' }
+};
+
+function drawPanel(x, y, w, h, c){
+  px(x, y, w, h, c.border);
+  px(x+2, y+2, w-4, h-4, c.fill);
+  px(x+2, y+2, w-4, 3, c.light);
+  px(x+2, y+h-5, w-4, 3, c.dark);
+  px(x+2, y+5, 3, h-10, c.light);
+  px(x+w-5, y+5, 3, h-10, c.dark);
+}
+
+function drawButtons(){
+  const now = performance.now();
+  for(const b of ui){
+    const pa = pressAnim[b.id] || 0;
+    const pressed = (now - pa) < 110;
+    const oy = pressed ? 2 : 0;
+    const base = BTN_COLORS[b.style] || BTN_COLORS.blue;
+    const c = pressed
+      ? { fill:base.dark, light:base.fill, dark:'#000', border:base.border }
+      : base;
+
+    if(!pressed) px(b.x+2, b.y+3, b.w, b.h, 'rgba(0,0,0,0.35)');
+    drawPanel(b.x, b.y + oy, b.w, b.h, c);
+
+    const ty = b.y + oy + Math.round((b.h - 7*b.fs) / 2);
+    drawText(b.label, b.x + b.w/2, ty + 1, b.fs, 'rgba(0,0,0,0.5)', 'center');
+    drawText(b.label, b.x + b.w/2, ty, b.fs, pressed ? '#fff3c0' : '#ffffff', 'center');
+  }
+}
+
+/* =========================================================
+   ПТИЦА
+   ========================================================= */
+function drawBirdAt(cx, cy, s, rot, wingT){
+  const skin = SKINS[G.skinIndex];
+  const ox = -(12*s)/2;
+  const oy = -(9*s)/2;
+
+  ctx.save();
+  ctx.translate(Math.round(cx), Math.round(cy));
+  ctx.rotate(rot);
+
+  const put = (c, r, col) => {
+    const x0 = Math.round(ox + c*s);
+    const x1 = Math.round(ox + (c+1)*s);
+    const y0 = Math.round(oy + r*s);
+    const y1 = Math.round(oy + (r+1)*s);
+    const w = x1 - x0, h = y1 - y0;
+    if(w <= 0 || h <= 0) return;
+    ctx.fillStyle = col;
+    ctx.fillRect(x0, y0, w, h);
+  };
+
+  /* контур */
+  for(let r=0;r<9;r++){
+    for(let c=0;c<12;c++){
+      if(BIRD_SPRITE[r][c] === '.') continue;
+      put(c-1, r-1, skin.dark);
+      put(c+1, r-1, skin.dark);
+      put(c-1, r+1, skin.dark);
+      put(c+1, r+1, skin.dark);
+      put(c,   r-1, skin.dark);
+      put(c,   r+1, skin.dark);
+      put(c-1, r,   skin.dark);
+      put(c+1, r,   skin.dark);
+    }
+  }
+
+  /* тело */
+  for(let r=0;r<9;r++){
+    const row = BIRD_SPRITE[r];
+    for(let c=0;c<12;c++){
+      const ch = row[c];
+      if(ch === '.') continue;
+      let col;
+      if(ch === 'B') col = skin.body;
+      else if(ch === 'W') col = '#ffffff';
+      else if(ch === 'K') col = '#141420';
+      else if(ch === 'O') col = '#ff9d2e';
+      else continue;
+      put(c, r, col);
+    }
+  }
+
+  /* крыло */
+  const frame = Math.floor(wingT / 6) % 3;
+  let wRect;
+  if(frame === 0)      wRect = [1, 3, 4, 3];
+  else if(frame === 1) wRect = [1, 5, 4, 3];
+  else                 wRect = [1, 7, 4, 2];
+
+  const [wx, wy, ww, wh] = wRect;
+  for(let r=0;r<9;r++){
+    for(let c=0;c<12;c++){
+      if(BIRD_SPRITE[r][c] === '.') continue;
+      if(c >= wx && c < wx+ww && r >= wy && r < wy+wh){
+        put(c, r, (r === wy + wh - 1) ? skin.dark : skin.wing);
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+/* =========================================================
+   ТРУБЫ
+   ========================================================= */
+function drawPipeBody(x, y0, y1){
+  const h = Math.round(y1 - y0);
+  if(h <= 0) return;
+  x = Math.round(x); y0 = Math.round(y0);
+
+  px(x, y0, PIPE_W, h, '#5cc44c');
+  px(x, y0, 2, h, '#1b3a1b');
+  px(x + PIPE_W - 2, y0, 2, h, '#1b3a1b');
+  px(x + 2, y0, 5, h, '#9ce88a');
+  px(x + PIPE_W - 8, y0, 5, h, '#2f7a2a');
+  px(x + 7, y0, 2, h, '#7dd86c');
+}
+
+function drawPipeCap(x, y, w, h){
+  x = Math.round(x); y = Math.round(y);
+  px(x, y, w, h, '#5cc44c');
+  px(x, y, w, 2, '#1b3a1b');
+  px(x, y + h - 2, w, 2, '#1b3a1b');
+  px(x, y, 2, h, '#1b3a1b');
+  px(x + w - 2, y, 2, h, '#1b3a1b');
+  px(x + 2, y + 2, 5, h - 4, '#9ce88a');
+  px(x + w - 8, y + 2, 5, h - 4, '#2f7a2a');
+  px(x + 7, y + 2, 2, h - 4, '#7dd86c');
+}
+
+function drawPipePair(x, gapY){
+  const capH = 12, capOver = 3;
+  const capW = PIPE_W + capOver*2;
+  drawPipeBody(x, 0, gapY - capH);
+  drawPipeCap(x - capOver, gapY - capH, capW, capH);
+  const by = gapY + PIPE_GAP;
+  drawPipeCap(x - capOver, by, capW, capH);
+  drawPipeBody(x, by + capH, GROUND_Y);
+}
+
+/* =========================================================
+   ЛОГИКА
+   ========================================================= */
+function resetGame(){
+  G.score = 0;
+  G.pipes = [];
+  G.spawnTimer = 40;
+  G.bird.y = 150;
+  G.bird.v = 0;
+  G.bird.rot = 0;
+  G.groundHit = false;
+  G.newRecord = false;
+  G.recordSoundAt = -1;
+  G.wingT = 0;
+}
+
+function startGame(){ resetGame(); G.state = 'ready'; }
+function startPlay(){ G.state = 'play'; G.spawnTimer = 60; }
+function flap(){ G.bird.v = JUMP; G.wingT = 0; Sound.flap(); }
+function pauseGame(){ if(G.state === 'play') G.state = 'pause'; }
+function resumeGame(){ if(G.state === 'pause') G.state = 'play'; }
+function toMenu(){ G.state = 'menu'; }
+function cycleTheme(){ G.themeIndex = (G.themeIndex + 1) % THEMES.length; }
+function cycleSkin(){ G.skinIndex = (G.skinIndex + 1) % SKINS.length; }
+
+function spawnPipe(){
+  const minY = PLAY_TOP + 30;
+  const maxY = GROUND_Y - PIPE_GAP - 30;
+  const gapY = Math.round(minY + Math.random() * (maxY - minY));
+  G.pipes.push({ x: W + 12, gapY: gapY, passed: false });
+}
+
+function die(){
+  if(G.state !== 'play') return;
+  Sound.hit();
+  G.state = 'over';
+  G.groundHit = false;
+  G.recordSoundAt = -1;
+
+  if(G.score > G.highScore){
+    G.highScore = G.score;
+    G.newRecord = true;
+    G.recordSoundAt = 42;
+    try{ localStorage.setItem('flappyPixelHighScore', String(G.highScore)); }catch(e){}
+  }
+}
+
+/* =========================================================
+   UPDATE
+   ========================================================= */
+function update(){
+  const t = performance.now();
+
+  if(G.state === 'menu'){
+    G.bgScroll += 0.35;
+    G.wingT++;
+    return;
+  }
+
+  if(G.state === 'ready'){
+    G.bgScroll += PIPE_SPEED;
+    G.wingT++;
+    G.bird.y = 150 + Math.sin(t/380) * 6;
+    G.bird.rot = Math.sin(t/380) * 0.16;
+    return;
+  }
+
+  if(G.state === 'pause') return;
+
+  if(G.state === 'play'){
+    G.bgScroll += PIPE_SPEED;
+    G.wingT++;
+
+    G.bird.v = Math.min(G.bird.v + GRAVITY, MAX_FALL);
+    G.bird.y += G.bird.v;
+    if(G.bird.y < PLAY_TOP + 8){ G.bird.y = PLAY_TOP + 8; G.bird.v = 0; }
+    G.bird.rot = Math.max(-0.4, Math.min(1.2, G.bird.v * 0.11));
+
+    G.spawnTimer--;
+    if(G.spawnTimer <= 0){
+      spawnPipe();
+      G.spawnTimer = Math.round(PIPE_SPACING / PIPE_SPEED);
+    }
+
+    for(let i = G.pipes.length-1; i >= 0; i--){
+      const p = G.pipes[i];
+      p.x -= PIPE_SPEED;
+      if(p.x + PIPE_W + 4 < 0) G.pipes.splice(i, 1);
+    }
+
+    for(const p of G.pipes){
+      if(!p.passed && p.x + PIPE_W < BIRD_X - HIT_W2){
+        p.passed = true;
+        G.score++;
+        Sound.score();
+      }
+    }
+
+    const bx1 = BIRD_X - HIT_W2, bx2 = BIRD_X + HIT_W2;
+    const by1 = G.bird.y - HIT_H2, by2 = G.bird.y + HIT_H2;
+
+    for(const p of G.pipes){
+      if(bx2 > p.x && bx1 < p.x + PIPE_W){
+        if(by1 < p.gapY || by2 > p.gapY + PIPE_GAP){ die(); return; }
+      }
+    }
+    if(by2 >= GROUND_Y){ die(); return; }
+
+    return;
+  }
+
+  if(G.state === 'over'){
+    G.wingT++;
+
+    if(!G.groundHit){
+      G.bird.v = Math.min(G.bird.v + GRAVITY * 1.25, MAX_FALL + 3);
+      G.bird.y += G.bird.v;
+      G.bird.rot = Math.min(G.bird.rot + 0.08, 1.55);
+      if(G.bird.y + HIT_H2 >= GROUND_Y){
+        G.bird.y = GROUND_Y - HIT_H2;
+        G.groundHit = true;
+      }
+    }
+
+    if(G.recordSoundAt >= 0){
+      G.recordSoundAt--;
+      if(G.recordSoundAt === 0){ Sound.record(); G.recordSoundAt = -1; }
+    }
+    return;
+  }
+}
+
+/* =========================================================
+   РЕНДЕР
+   ========================================================= */
+function renderMenu(){
+  ctx.fillStyle = 'rgba(6,8,22,0.42)';
+  ctx.fillRect(0, 0, W, H);
+
+  drawTextShadow('FLAPPY', 120, 16, 3, '#ffd93d', '#7a3b00', 'center');
+  drawTextShadow('BIRD',   120, 44, 3, '#ffd93d', '#7a3b00', 'center');
+
+  const bob = Math.sin(performance.now()/380) * 4;
+  drawBirdAt(120, 96 + bob, 3, Math.sin(performance.now()/380) * 0.10, G.wingT);
+
+  const skinName = SKINS[G.skinIndex].name;
+  const fs = skinName.length > 6 ? 1 : 2;
+  drawTextShadow(skinName, 120, 128, fs, '#ffffff', '#000000', 'center');
+
+  addBtn('menu_play',  35, 156, 170, 30, 'ИГРАТЬ',       2, 'green', () => { startGame(); });
+  addBtn('menu_theme', 35, 194, 170, 30, 'СМЕНИТЬ ФОН',  2, 'blue',  () => { cycleTheme(); });
+  addBtn('menu_skin',  35, 232, 170, 30, 'СМЕНИТЬ СКИН', 2, 'blue',  () => { cycleSkin(); });
+
+  drawTextShadow('РЕКОРД: ' + G.highScore, 120, 268, 2, '#8ef7ff', '#003a44', 'center');
+  drawTextShadow('ФОН: ' + THEMES[G.themeIndex].name, 120, 292, 2, '#d8d8ff', '#101028', 'center');
+}
+
+function drawTopBar(){
+  px(0, 0, W, 22, 'rgba(4,6,18,0.55)');
+  px(0, 21, W, 2, 'rgba(0,0,0,0.45)');
+
+  addBtn('top_stop',    5,   2, 55, 18, 'СТОП',   1, 'red',   () => { pauseGame(); });
+  addBtn('top_resume',  64,  2, 55, 18, 'ПУСК',   1, 'green', () => { resumeGame(); });
+  addBtn('top_restart', 123, 2, 55, 18, 'ЗАНОВО', 1, 'blue',  () => { startGame(); });
+  addBtn('top_menu',    182, 2, 55, 18, 'МЕНЮ',   1, 'dark',  () => { toMenu(); });
+}
+
+function renderGameOver(){
+  ctx.fillStyle = 'rgba(4,6,16,0.74)';
+  ctx.fillRect(0, 0, W, H);
+
+  const pxx = 16, pyy = 50, pww = 208, phh = 224;
+  drawPanel(pxx, pyy, pww, phh, BTN_COLORS.dark);
+  px(pxx+4, pyy+4, pww-8, phh-8, 'rgba(0,0,0,0.35)');
+
+  drawTextShadow('ИГРА ОКОНЧЕНА', 120, 64, 2, '#ff6b6b', '#3a0000', 'center');
+  drawTextShadow('СЧЁТ', 120, 94, 2, '#ffffff', '#000000', 'center');
+  drawTextShadow(String(G.score), 120, 112, 4, '#ffd93d', '#7a3b00', 'center');
+  drawTextShadow('РЕКОРД: ' + G.highScore, 120, 152, 2, '#8ef7ff', '#003a44', 'center');
+
+  if(G.newRecord){
+    const blink = Math.sin(performance.now()/170) > -0.25;
+    if(blink){
+      drawTextShadow('НОВЫЙ РЕКОРД!', 120, 176, 2, '#7cfc3a', '#0a3a00', 'center');
+    }
+  }
+
+  addBtn('over_restart', 30, 200, 180, 28, 'ЗАНОВО',        2, 'green', () => { startGame(); });
+  addBtn('over_menu',    30, 236, 180, 28, 'ГЛАВНЫЙ ЭКРАН', 2, 'blue',  () => { toMenu(); });
+}
+
+function renderGame(){
+  for(const p of G.pipes) drawPipePair(p.x, p.gapY);
+  drawBirdAt(BIRD_X, G.bird.y, BIRD_SCALE, G.bird.rot, G.wingT);
+
+  if(G.state !== 'over') drawTopBar();
+
+  if(G.state !== 'over'){
+    drawTextShadow(String(G.score), 120, 34, 3, '#ffffff', '#000000', 'center');
+  }
+
+  if(G.state === 'ready'){
+    const a = 0.55 + 0.45 * Math.sin(performance.now()/380);
+    ctx.globalAlpha = a;
+    drawTextShadow('ТАП ИЛИ ПРОБЕЛ', 120, 178, 2, '#ffffff', '#000000', 'center');
+    ctx.globalAlpha = 1;
+  }
+
+  if(G.state === 'pause'){
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+    drawTextShadow('ПАУЗА', 120, 136, 3, '#ffd93d', '#7a3b00', 'center');
+  }
+
+  if(G.state === 'over') renderGameOver();
+}
+
+function render(){
+  ui = [];
+  ctx.imageSmoothingEnabled = false;
+
+  const theme = THEMES[G.themeIndex];
+  theme.draw(G.bgScroll, performance.now());
+
+  if(G.state === 'menu') renderMenu();
+  else renderGame();
+
+  drawButtons();
+}
+
+/* =========================================================
+   ВВОД
+   ========================================================= */
+function toLogical(clientX, clientY){
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - r.left) / r.width  * W,
+    y: (clientY - r.top)  / r.height * H
+  };
+}
+
+function onPointerDown(clientX, clientY){
+  Sound.init();
+  const p = toLogical(clientX, clientY);
+  const b = hitBtn(p.x, p.y);
+
+  if(b){
+    pressAnim[b.id] = performance.now();
+    Sound.click();
+    b.action();
+    return;
+  }
+
+  if(G.state === 'ready'){ startPlay(); flap(); }
+  else if(G.state === 'play'){ flap(); }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  onPointerDown(e.clientX, e.clientY);
+}, { passive:false });
+
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+window.addEventListener('keydown', (e) => {
+  if(e.code === 'Space' || e.code === 'ArrowUp' || e.key === ' '){
+    e.preventDefault();
+    if(e.repeat) return;
+    Sound.init();
+    if(G.state === 'ready'){ startPlay(); flap(); }
+    else if(G.state === 'play'){ flap(); }
+    else if(G.state === 'menu'){
+      const b = ui.find(x => x.id === 'menu_play');
+      if(b){ pressAnim[b.id] = performance.now(); Sound.click(); b.action(); }
+    }
+    else if(G.state === 'over'){
+      const b = ui.find(x => x.id === 'over_restart');
+      if(b){ pressAnim[b.id] = performance.now(); Sound.click(); b.action(); }
+    }
+  }
+  if(e.code === 'Escape' || e.code === 'KeyP'){
+    if(G.state === 'play') pauseGame();
+    else if(G.state === 'pause') resumeGame();
+  }
+});
+
+/* =========================================================
+   МАСШТАБИРОВАНИЕ
+   ========================================================= */
+function resize(){
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const scale = Math.min(vw / W, vh / H);
+  canvas.style.width  = Math.max(1, Math.floor(W * scale)) + 'px';
+  canvas.style.height = Math.max(1, Math.floor(H * scale)) + 'px';
+}
+
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 150));
+resize();
+
+/* =========================================================
+   ГЛАВНЫЙ ЦИКЛ
+   ========================================================= */
+const STEP = 1000 / 60;
+let lastTime = 0;
+let acc = 0;
+
+function loop(t){
+  requestAnimationFrame(loop);
+
+  if(!lastTime) lastTime = t;
+  let dt = t - lastTime;
+  lastTime = t;
+  if(dt > 120) dt = 120;
+
+  acc += dt;
+  let guard = 0;
+  while(acc >= STEP && guard < 8){
+    update();
+    acc -= STEP;
+    guard++;
+  }
+  if(guard >= 8) acc = 0;
+
+  render();
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
